@@ -16,14 +16,15 @@ impl<T: Display> Display for WithPos<T> {
 }
 
 /// List Vec is a simple wrapper struct to print Vecs
-struct DisplayVec<'a, T: Display>(&'a Vec<T>);
-impl<'a, T: Display> Display for DisplayVec<'a, T> {
+struct DisplayVec<'a, T: Display, U: Display>(&'a Vec<T>, U);
+impl<'a, T: Display, U: Display> Display for DisplayVec<'a, T, U> {
     fn fmt(&self, f: &mut Formatter) -> Result {
+        let separator = &self.1;
         if let Some(item) = &self.0.first() {
             write!(f, "{}", item)?;
         }
         for item in &self.0.iter().next() {
-            write!(f, ",{}", item)?;
+            write!(f, "{}{}", separator, item)?;
         }
         Ok(())
     }
@@ -107,7 +108,7 @@ impl Display for Name {
             Name::Selected(ref name, ref designator) => write!(f, "{}.{}", name, designator),
             Name::SelectedAll(ref name) => write!(f, "{}.all", name),
             Name::Indexed(ref name, ref expressions) => {
-                write!(f, "{}({})", name, DisplayVec(expressions))
+                write!(f, "{}({})", name, DisplayVec(expressions, ','))
             }
             Name::Slice(ref name, ref discrete_range) => write!(f, "{}({})", name, discrete_range),
             Name::Attribute(ref attribute_name) => write!(f, "{}", attribute_name),
@@ -128,7 +129,7 @@ impl Display for SelectedName {
 
 impl Display for FunctionCall {
     fn fmt(&self, f: &mut Formatter) -> Result {
-        write!(f, "{}({})", self.name, DisplayVec(&self.parameters))
+        write!(f, "{}({})", self.name, DisplayVec(&self.parameters, ','))
     }
 }
 
@@ -148,7 +149,7 @@ impl Display for ElementAssociation {
             ElementAssociation::Positional(ref expression) => write!(f, "{}", expression),
             ElementAssociation::Named(ref choice, ref expression) => {
                 // TODO: implement other display vec with =>
-                write!(f, "{} {}", DisplayVec(choice), expression)
+                write!(f, "{} {}", DisplayVec(choice, ','), expression)
             }
         }
     }
@@ -238,7 +239,7 @@ impl Display for Expression {
             }
             Expression::Unary(ref operator, ref operand) => write!(f, "({} {})", operator, operand),
             Expression::Aggregate(ref element_associations) => {
-                write!(f, "({})", DisplayVec(element_associations))
+                write!(f, "({})", DisplayVec(element_associations, ','))
             }
             Expression::Qualified(ref qualified_expression) => {
                 write!(f, "{}", qualified_expression)
@@ -304,14 +305,14 @@ impl Display for SubtypeConstraint {
         match self {
             SubtypeConstraint::Range(ref range) => write!(f, "{}", range),
             SubtypeConstraint::Array(ref discrete_ranges, ref subtype_constraint) => {
-                write!(f, "({})", DisplayVec(discrete_ranges))?;
+                write!(f, "({})", DisplayVec(discrete_ranges, ','))?;
                 if let Some(ref subtype_constraint) = subtype_constraint {
                     write!(f, "{}", subtype_constraint)?;
                 }
                 Ok(())
             }
             SubtypeConstraint::Record(ref element_constraints) => {
-                write!(f, "({})", DisplayVec(element_constraints))
+                write!(f, "({})", DisplayVec(element_constraints, ','))
             }
         }
     }
@@ -329,7 +330,7 @@ impl Display for ResolutionIndication {
             ResolutionIndication::FunctionName(ref selected_name) => write!(f, "{}", selected_name),
             ResolutionIndication::ArrayElement(ref selected_name) => write!(f, "{}", selected_name),
             ResolutionIndication::Record(ref record_element_resolutions) => {
-                write!(f, "{}", DisplayVec(record_element_resolutions))
+                write!(f, "{}", DisplayVec(record_element_resolutions, ','))
             }
             ResolutionIndication::Unresolved => Ok(()),
         }
@@ -496,7 +497,7 @@ impl Display for TypeDefinition {
     fn fmt(&self, f: &mut Formatter) -> Result {
         match self {
             TypeDefinition::Enumeration(ref enumeration_literals) => {
-                write!(f, "({})", DisplayVec(enumeration_literals))
+                write!(f, "({})", DisplayVec(enumeration_literals, ','))
             }
             TypeDefinition::Integer(ref range) => write!(f, "{}", range),
             TypeDefinition::Physical(ref physical_type_declaration) => {
@@ -505,7 +506,7 @@ impl Display for TypeDefinition {
             TypeDefinition::Array(ref array_indexes, ref subtype_indication) => write!(
                 f,
                 "array ({}) of {}",
-                DisplayVec(array_indexes),
+                DisplayVec(array_indexes, ','),
                 subtype_indication
             ),
             TypeDefinition::Record(ref element_declarations) => {
@@ -589,267 +590,578 @@ impl Display for ProcedureSpecification {
     fn fmt(&self, f: &mut Formatter) -> Result {
         write!(f, "procedure {}", self.designator)?;
         if !self.parameter_list.is_empty() {
-            write!(f, "({})", DisplayVec(&self.parameter_list))?;
+            write!(f, "({})", DisplayVec(&self.parameter_list, ','))?;
         }
         Ok(())
     }
 }
 
 impl Display for FunctionSpecification {
-    fn fmt(&self, _f: &mut Formatter) -> Result {
-        unimplemented!()
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        if self.pure == false {
+            write!(f, "impure ")?;
+        }
+        write!(
+            f,
+            "function {} ({}) return {}",
+            &self.designator,
+            DisplayVec(&self.parameter_list, ';'),
+            &self.return_type
+        )
     }
 }
 
 impl Display for SubprogramBody {
-    fn fmt(&self, _f: &mut Formatter) -> Result {
-        unimplemented!()
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        writeln!(f, "{} is", self.specification)?;
+        for declaration in &self.declarations {
+            writeln!(f, "{}", declaration)?;
+        }
+        writeln!(f, "begin")?;
+        for statement in &self.statements {
+            writeln!(f, "{}", statement)?;
+        }
+        writeln!(f, "end")
     }
 }
 
 impl Display for Signature {
-    fn fmt(&self, _f: &mut Formatter) -> Result {
-        unimplemented!()
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        match self {
+            Signature::Function(ref selected_names, ref selected_name) => {
+                write!(f, "[")?;
+                for type_mark in selected_names {
+                    write!(f, "{} ", type_mark)?;
+                }
+                write!(f, "return {}]", selected_name)
+            }
+            Signature::Procedure(ref selected_names) => {
+                write!(f, "[")?;
+                for selected_name in selected_names {
+                    write!(f, " {}", selected_name)?;
+                }
+                write!(f, " ]")
+            }
+        }
     }
 }
 
 impl Display for SubprogramDeclaration {
-    fn fmt(&self, _f: &mut Formatter) -> Result {
-        unimplemented!()
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        match self {
+            SubprogramDeclaration::Procedure(ref procedure_specification) => {
+                write!(f, "{}", procedure_specification)
+            }
+            SubprogramDeclaration::Function(ref function_specification) => {
+                write!(f, "{}", function_specification)
+            }
+        }
+    }
+}
+
+impl Display for InterfaceFileDeclaration {
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        write!(f, "file {} : {}", self.ident, self.subtype_indication)
     }
 }
 
 impl Display for InterfaceObjectDeclaration {
-    fn fmt(&self, _f: &mut Formatter) -> Result {
-        unimplemented!()
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        write!(
+            f,
+            "{} {}: {} {}",
+            self.class, self.ident, self.mode, self.subtype_indication
+        )?;
+        if let Some(ref expression) = &self.expression {
+            write!(f, ":= {}", expression)?;
+        }
+        Ok(())
     }
 }
 
 impl Display for SubprogramDefault {
-    fn fmt(&self, _f: &mut Formatter) -> Result {
-        unimplemented!()
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        match self {
+            SubprogramDefault::Name(ref selected_name) => write!(f, "{}", selected_name),
+            SubprogramDefault::Box => write!(f, "<>"),
+        }
     }
 }
 
 impl Display for InterfacePackageGenericMapAspect {
-    fn fmt(&self, _f: &mut Formatter) -> Result {
-        unimplemented!()
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        match self {
+            InterfacePackageGenericMapAspect::Map(ref association_elements) => {
+                write!(f, "generic map ({})", DisplayVec(association_elements, ','))
+            }
+            InterfacePackageGenericMapAspect::Box => write!(f, "generic map (<>)"),
+            InterfacePackageGenericMapAspect::Default => write!(f, "generic map ( default )"),
+        }
     }
 }
 
 impl Display for InterfacePackageDeclaration {
-    fn fmt(&self, _f: &mut Formatter) -> Result {
-        unimplemented!()
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        write!(
+            f,
+            "package {} is new {} {}",
+            &self.ident, &self.package_name, &self.generic_map
+        )
     }
 }
 
 impl Display for InterfaceDeclaration {
-    fn fmt(&self, _f: &mut Formatter) -> Result {
-        unimplemented!()
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        match self {
+            InterfaceDeclaration::Object(ref interface_object_declaration) => {
+                write!(f, "{}", interface_object_declaration)
+            }
+            InterfaceDeclaration::File(ref interface_file_declaration) => {
+                write!(f, "{}", interface_file_declaration)
+            }
+            InterfaceDeclaration::Type(ref ident) => write!(f, "{}", ident),
+            InterfaceDeclaration::Subprogram(
+                ref subprogram_declaration,
+                ref subprogram_default,
+            ) => {
+                write!(f, "{}", subprogram_declaration)?;
+                if let Some(ref subprogram_default) = &subprogram_default {
+                    write!(f, " is {}", subprogram_default)?;
+                }
+                Ok(())
+            }
+            InterfaceDeclaration::Package(ref interface_package_declaration) => {
+                write!(f, "{}", interface_package_declaration)
+            }
+        }
     }
 }
 
 impl Display for Mode {
-    fn fmt(&self, _f: &mut Formatter) -> Result {
-        unimplemented!()
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        match self {
+            _ => write!(f, "{}", format!("{:?}", self).to_lowercase()),
+        }
     }
 }
 
 impl Display for PortClause {
-    fn fmt(&self, _f: &mut Formatter) -> Result {
-        unimplemented!()
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        write!(f, "port ({});", DisplayVec(&self.port_list, ';'))
     }
 }
 
 impl Display for ComponentDeclaration {
-    fn fmt(&self, _f: &mut Formatter) -> Result {
-        unimplemented!()
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        writeln!(f, "component {} is", &self.ident)?;
+        for interface_declaration in &self.generic_list {
+            writeln!(f, "{}", interface_declaration)?;
+        }
+        for port in &self.port_list {
+            writeln!(f, "{}", port)?;
+        }
+        writeln!(f, "end component;")
     }
 }
 
 impl Display for Declaration {
-    fn fmt(&self, _f: &mut Formatter) -> Result {
-        unimplemented!()
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        match self {
+            Declaration::Object(ref object_declaration) => write!(f, "{}", object_declaration),
+            Declaration::File(ref file_declaration) => write!(f, "{}", file_declaration),
+            Declaration::Type(ref type_declaration) => write!(f, "{}", type_declaration),
+            Declaration::Component(ref component_declaration) => {
+                write!(f, "{}", component_declaration)
+            }
+            Declaration::Attribute(ref attribute) => write!(f, "{}", attribute),
+            Declaration::Alias(ref alias_declaration) => write!(f, "{}", alias_declaration),
+            Declaration::SubprogramDeclaration(ref subprogram_declaration) => {
+                write!(f, "{}", subprogram_declaration)
+            }
+            Declaration::SubprogramBody(ref subprogram_body) => write!(f, "{}", subprogram_body),
+            Declaration::Use(ref use_clause) => write!(f, "{}", use_clause),
+            Declaration::Package(ref package_instantiation) => {
+                write!(f, "{}", package_instantiation)
+            }
+            Declaration::Configuration(ref configuration_specification) => {
+                write!(f, "{}", configuration_specification)
+            }
+        }
     }
 }
 
 impl Display for WaitStatement {
-    fn fmt(&self, _f: &mut Formatter) -> Result {
-        unimplemented!()
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        write!(f, "wait on {}", DisplayVec(&self.sensitivity_clause, ','))?;
+        if let Some(ref condition_clause) = &self.condition_clause {
+            write!(f, " {}", condition_clause)?;
+        }
+        if let Some(ref timeout_clause) = &self.timeout_clause {
+            write!(f, " {}", timeout_clause)?;
+        }
+        write!(f, " ;")
     }
 }
 
 impl Display for AssertStatement {
-    fn fmt(&self, _f: &mut Formatter) -> Result {
-        unimplemented!()
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        write!(f, "assert {}", &self.condition)?;
+        if let Some(ref report) = &self.report {
+            write!(f, " report {}", report)?;
+        }
+        if let Some(ref severity) = &self.severity {
+            write!(f, " severity {}", severity)?;
+        }
+        write!(f, " ;")
     }
 }
 
 impl Display for ReportStatement {
-    fn fmt(&self, _f: &mut Formatter) -> Result {
-        unimplemented!()
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        write!(f, "report {}", &self.report)?;
+        if let Some(ref severity) = &self.severity {
+            write!(f, " severity {}", severity)?;
+        }
+        write!(f, " ;")
     }
 }
 
 impl Display for Target {
-    fn fmt(&self, _f: &mut Formatter) -> Result {
-        unimplemented!()
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        match self {
+            Target::Name(ref name) => write!(f, "{}", name),
+            Target::Aggregate(ref element_associations) => {
+                write!(f, "({})", DisplayVec(element_associations, ','))
+            }
+        }
     }
 }
 
 impl Display for WaveformElement {
-    fn fmt(&self, _f: &mut Formatter) -> Result {
-        unimplemented!()
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        write!(f, "{}", &self.value)?;
+        if let Some(ref after) = &self.after {
+            write!(f, " after {}", after)?;
+        }
+        Ok(())
     }
 }
 
 impl Display for Waveform {
-    fn fmt(&self, _f: &mut Formatter) -> Result {
-        unimplemented!()
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        match self {
+            Waveform::Elements(ref waveform_elements) => {
+                write!(f, "{}", DisplayVec(waveform_elements, ','))
+            }
+            Waveform::Unaffected => write!(f, "unaffected"),
+        }
     }
 }
 
 impl Display for DelayMechanism {
-    fn fmt(&self, _f: &mut Formatter) -> Result {
-        unimplemented!()
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        match self {
+            DelayMechanism::Transport => write!(f, "transport"),
+            DelayMechanism::Inertial { ref reject } => {
+                if let Some(ref reject) = reject {
+                    write!(f, "reject {} ", reject)?;
+                }
+                write!(f, "intertial")
+            }
+        }
     }
 }
 
 impl Display for SignalAssignment {
-    fn fmt(&self, _f: &mut Formatter) -> Result {
-        unimplemented!()
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        write!(f, "{} <=", &self.target)?;
+        if let Some(delay_mechanism) = &self.delay_mechanism {
+            write!(f, " {}", delay_mechanism)?;
+        }
+        write!(f, " {}", &self.rhs)
     }
 }
 
 impl Display for VariableAssignment {
-    fn fmt(&self, _f: &mut Formatter) -> Result {
-        unimplemented!()
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        write!(f, "{} := {};", &self.target, &self.rhs)
     }
 }
 
-impl<T> Display for AssignmentRightHand<T> {
-    fn fmt(&self, _f: &mut Formatter) -> Result {
-        unimplemented!()
+impl<T: Display> Display for AssignmentRightHand<T> {
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        match self {
+            AssignmentRightHand::Simple(ref x) => write!(f, "{}", x),
+            AssignmentRightHand::Conditional(ref conditionals) => write!(f, "{}", conditionals),
+            AssignmentRightHand::Selected(ref selection) => write!(f, "{}", selection),
+        }
     }
 }
 
-impl<T> Display for Conditional<T> {
-    fn fmt(&self, _f: &mut Formatter) -> Result {
-        unimplemented!()
+impl<T: Display> Display for Conditional<T> {
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        write!(f, "{} when {}", &self.item, &self.condition)
     }
 }
 
-impl<T> Display for Conditionals<T> {
-    fn fmt(&self, _f: &mut Formatter) -> Result {
-        unimplemented!()
+impl<T: Display> Display for Conditionals<T> {
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        write!(f, "{}", DisplayVec(&self.conditionals, " else"))?;
+        if let Some(ref else_item) = &self.else_item {
+            write!(f, " else {}", else_item)?;
+        }
+        Ok(())
     }
 }
 
-impl<T> Display for Alternative<T> {
-    fn fmt(&self, _f: &mut Formatter) -> Result {
-        unimplemented!()
+impl<T: Display> Display for Alternative<T> {
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        write!(
+            f,
+            "when {} => {}",
+            DisplayVec(&self.choices, '|'),
+            &self.item
+        )
     }
 }
 
-impl<T> Display for Selection<T> {
-    fn fmt(&self, _f: &mut Formatter) -> Result {
-        unimplemented!()
+impl<T: Display> Display for Selection<T> {
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        writeln!(f, "case {} is", &self.expression)?;
+        for alternative in &self.alternatives {
+            write!(f, "{}", alternative)?;
+        }
+        writeln!(f, "end case;")
     }
 }
 
 impl Display for IterationScheme {
-    fn fmt(&self, _f: &mut Formatter) -> Result {
-        unimplemented!()
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        match self {
+            IterationScheme::While(ref expression) => write!(f, "while {}", expression),
+            IterationScheme::For(ref ident, ref discrete_range) => {
+                write!(f, "for {} in {}", ident, discrete_range)
+            }
+        }
     }
 }
 
 impl Display for LoopStatement {
-    fn fmt(&self, _f: &mut Formatter) -> Result {
-        unimplemented!()
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        if let Some(ref iteration_scheme) = &self.iteration_scheme {
+            write!(f, "{} ", iteration_scheme)?;
+        }
+        writeln!(f, "loop")?;
+        for statement in &self.statements {
+            writeln!(f, "{}", statement)?;
+        }
+        writeln!(f, "end loop;")
     }
 }
 
 impl Display for NextStatement {
-    fn fmt(&self, _f: &mut Formatter) -> Result {
-        unimplemented!()
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        write!(f, "next")?;
+        if let Some(ref loop_label) = &self.loop_label {
+            write!(f, " {}", loop_label)?;
+        }
+        if let Some(ref condition) = &self.condition {
+            write!(f, " when {}", condition)?;
+        }
+        Ok(())
     }
 }
 
 impl Display for ExitStatement {
-    fn fmt(&self, _f: &mut Formatter) -> Result {
-        unimplemented!()
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        write!(f, "exit")?;
+        if let Some(ref loop_label) = &self.loop_label {
+            write!(f, " {}", loop_label)?;
+        }
+        if let Some(ref condition) = &self.condition {
+            write!(f, " when {}", condition)?;
+        }
+        Ok(())
     }
 }
 
 impl Display for ReturnStatement {
-    fn fmt(&self, _f: &mut Formatter) -> Result {
-        unimplemented!()
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        write!(f, "return")?;
+        if let Some(ref expression) = &self.expression {
+            write!(f, " {}", expression)?;
+        }
+        write!(f, ";")
     }
 }
 
 impl Display for SequentialStatement {
-    fn fmt(&self, _f: &mut Formatter) -> Result {
-        unimplemented!()
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        match self {
+            SequentialStatement::Wait(ref wait_statement) => write!(f, "{}", wait_statement),
+            SequentialStatement::Assert(ref assert_statement) => write!(f, "{}", assert_statement),
+            SequentialStatement::Report(ref report_statement) => write!(f, "{}", report_statement),
+            SequentialStatement::VariableAssignment(ref variable_assignment) => {
+                write!(f, "{}", variable_assignment)
+            }
+            SequentialStatement::SignalAssignment(ref signal_assignment) => {
+                write!(f, "{}", signal_assignment)
+            }
+            SequentialStatement::ProcedureCall(ref function_call) => write!(f, "{}", function_call),
+            SequentialStatement::If(ref if_statement) => write!(f, "{}", if_statement),
+            SequentialStatement::Case(ref case_statement) => write!(f, "{}", case_statement),
+            SequentialStatement::Loop(ref loop_statement) => write!(f, "{}", loop_statement),
+            SequentialStatement::Next(ref next_statement) => write!(f, "{}", next_statement),
+            SequentialStatement::Exit(ref exit_statement) => write!(f, "{}", exit_statement),
+            SequentialStatement::Return(ref return_statement) => write!(f, "{}", return_statement),
+            SequentialStatement::Null => write!(f, "null;"),
+        }
     }
 }
 
 impl Display for LabeledSequentialStatement {
-    fn fmt(&self, _f: &mut Formatter) -> Result {
-        unimplemented!()
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        if let Some(ref label) = &self.label {
+            write!(f, "{}: ", label)?;
+        }
+        write!(f, "{}", &self.statement)
     }
 }
 
 impl Display for BlockStatement {
-    fn fmt(&self, _f: &mut Formatter) -> Result {
-        unimplemented!()
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        write!(f, "block ")?;
+        if let Some(ref guard_condition) = &self.guard_condition {
+            write!(f, "({}) ", guard_condition)?;
+        }
+        write!(f, "is")?;
+        for declaration in &self.decl {
+            writeln!(f, "{}", declaration)?;
+        }
+        writeln!(f, "begin")?;
+        for statement in &self.statements {
+            writeln!(f, "{}", statement)?;
+        }
+        writeln!(f, "end block;")
     }
 }
 
 impl Display for SensitivityList {
-    fn fmt(&self, _f: &mut Formatter) -> Result {
-        unimplemented!()
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        match self {
+            SensitivityList::Names(ref names) => write!(f, "{}", DisplayVec(names, ',')),
+            SensitivityList::All => write!(f, "all"),
+        }
     }
 }
 
 impl Display for ProcessStatement {
-    fn fmt(&self, _f: &mut Formatter) -> Result {
-        unimplemented!()
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        if self.postponed {
+            write!(f, "postponed ")?;
+        }
+        write!(f, "process ")?;
+        if let Some(ref sensitivity_list) = &self.sensitivity_list {
+            write!(f, "({}) ", sensitivity_list)?;
+        }
+        writeln!(f, "is")?;
+        for declaration in &self.decl {
+            writeln!(f, "{}", declaration)?;
+        }
+        writeln!(f, "begin")?;
+        for statement in &self.statements {
+            writeln!(f, "{}", statement)?;
+        }
+        writeln!(f, "end ")?;
+        if self.postponed {
+            write!(f, "postponed ")?;
+        }
+        writeln!(f, "process;")
     }
 }
 
 impl Display for ConcurrentProcedureCall {
-    fn fmt(&self, _f: &mut Formatter) -> Result {
-        unimplemented!()
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        if self.postponed {
+            write!(f, "postponed ")?;
+        }
+        write!(f, "{};", &self.call)
     }
 }
 
 impl Display for ConcurrentAssertStatement {
-    fn fmt(&self, _f: &mut Formatter) -> Result {
-        unimplemented!()
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        if self.postponed {
+            write!(f, "postponed ")?;
+        }
+        write!(f, "{};", &self.statement)
     }
 }
 
 impl Display for ConcurrentSignalAssignment {
-    fn fmt(&self, _f: &mut Formatter) -> Result {
-        unimplemented!()
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        if self.postponed {
+            write!(f, "postponed ")?;
+        }
+        write!(f, "{} <= ", &self.target)?;
+        if self.guarded {
+            write!(f, "guarded ")?;
+        }
+        if let Some(ref delay_mechanism) = &self.delay_mechanism {
+            write!(f, "{} ", delay_mechanism)?;
+        }
+        write!(f, "{};", &self.rhs)
     }
 }
 
 impl Display for InstantiatedUnit {
-    fn fmt(&self, _f: &mut Formatter) -> Result {
-        unimplemented!()
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        match self {
+            InstantiatedUnit::Component(ref selected_name) => {
+                write!(f, "component {}", selected_name)
+            }
+            InstantiatedUnit::Entity(ref selected_name, ref ident) => {
+                write!(f, "entity {}", selected_name)?;
+                if let Some(ref ident) = ident {
+                    write!(f, "({})", ident)?;
+                }
+                Ok(())
+            }
+            InstantiatedUnit::Configuration(ref selected_name) => {
+                write!(f, "configuration {}", selected_name)
+            }
+        }
     }
 }
 
 impl Display for InstantiationStatement {
-    fn fmt(&self, _f: &mut Formatter) -> Result {
-        unimplemented!()
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        writeln!(f, "{}", &self.unit)?;
+        if !&self.generic_map.is_empty() {
+            writeln!(f, "generic map ({})", DisplayVec(&self.generic_map, ','))?;
+        }
+        if !&self.port_map.is_empty() {
+            writeln!(f, "port map ({})", DisplayVec(&self.port_map, ','))?;
+        }
+        write!(f, ";")
     }
 }
 
 impl Display for GenerateBody {
-    fn fmt(&self, _f: &mut Formatter) -> Result {
-        unimplemented!()
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        if let Some(ref alternative_label) = &self.alternative_label {
+            write!(f, "{}: ", alternative_label)?;
+        }
+        if let Some(ref declarations) = &self.decl {
+            for declaration in declarations {
+                writeln!(f, "{}", declaration)?;
+            }
+        }
+        writeln!(f, "begin")?;
+        for statement in &self.statements {
+            writeln!(f, "{}", statement)?;
+        }
+        writeln!(f, "end;")
     }
 }
 
@@ -859,69 +1171,148 @@ impl Display for ForGenerateStatement {
     }
 }
 
+// TODO: find solution for this
+// impl Display for IfGenerateStatement {
+//     fn fmt(&self, _f: &mut Formatter) -> Result {
+//         unimplemented!()
+//     }
+// }
+//
+// impl Display for CaseGenerateStatement {
+//     fn fmt(&self, _f: &mut Formatter) -> Result {
+//         unimplemented!()
+//     }
+// }
+
 impl Display for ConcurrentStatement {
-    fn fmt(&self, _f: &mut Formatter) -> Result {
-        unimplemented!()
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        match self {
+            ConcurrentStatement::ProcedureCall(ref concurrent_procedure_call) => {
+                write!(f, "{}", concurrent_procedure_call)
+            }
+            ConcurrentStatement::Block(ref block_statement) => write!(f, "{}", block_statement),
+            ConcurrentStatement::Process(ref process_statement) => {
+                write!(f, "{}", process_statement)
+            }
+            ConcurrentStatement::Assert(ref concurrent_assert_statement) => {
+                write!(f, "{}", concurrent_assert_statement)
+            }
+            ConcurrentStatement::Assignment(ref concurrent_signal_assignment) => {
+                write!(f, "{}", concurrent_signal_assignment)
+            }
+            ConcurrentStatement::Instance(ref instantiation_statement) => {
+                write!(f, "{}", instantiation_statement)
+            }
+            ConcurrentStatement::ForGenerate(ref for_generate_statement) => {
+                write!(f, "{}", for_generate_statement)
+            }
+            ConcurrentStatement::IfGenerate(ref if_generate_statement) => {
+                write!(f, "{}", if_generate_statement)
+            }
+            ConcurrentStatement::CaseGenerate(ref case_generate_statement) => {
+                write!(f, "{}", case_generate_statement)
+            }
+        }
     }
 }
 
 impl Display for LabeledConcurrentStatement {
-    fn fmt(&self, _f: &mut Formatter) -> Result {
-        unimplemented!()
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        if let Some(ref label) = &self.label {
+            write!(f, "{}: ", label)?;
+        }
+        write!(f, "{}", &self.statement)
     }
 }
 
 impl Display for LibraryClause {
-    fn fmt(&self, _f: &mut Formatter) -> Result {
-        unimplemented!()
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        write!(f, "library {};", DisplayVec(&self.name_list, ','))
     }
 }
 
 impl Display for UseClause {
-    fn fmt(&self, _f: &mut Formatter) -> Result {
-        unimplemented!()
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        write!(f, "use {};", DisplayVec(&self.name_list, ','))
     }
 }
 
 impl Display for ContextReference {
-    fn fmt(&self, _f: &mut Formatter) -> Result {
-        unimplemented!()
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        write!(f, "context {};", DisplayVec(&self.name_list, ','))
     }
 }
 
 impl Display for ContextItem {
-    fn fmt(&self, _f: &mut Formatter) -> Result {
-        unimplemented!()
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        match self {
+            ContextItem::Use(ref use_clause) => write!(f, "{}", use_clause),
+            ContextItem::Library(ref library_clause) => write!(f, "{}", library_clause),
+            ContextItem::Context(ref context_reference) => write!(f, "{}", context_reference),
+        }
     }
 }
 
 impl Display for ContextDeclaration {
-    fn fmt(&self, _f: &mut Formatter) -> Result {
-        unimplemented!()
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        write!(f, "context {} is", &self.ident)?;
+        for item in &self.items {
+            writeln!(f, "{}", item)?;
+        }
+        writeln!(f, "end context")
     }
 }
 
 impl Display for PackageInstantiation {
-    fn fmt(&self, _f: &mut Formatter) -> Result {
-        unimplemented!()
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        write!(f, "package {} is new {}", &self.ident, &self.package_name)?;
+        if let Some(ref generic_map) = &self.generic_map {
+            write!(f, " generic map ({})", DisplayVec(generic_map, ','))?;
+        }
+        write!(f, ";")
     }
 }
 
 impl Display for InstantiationList {
-    fn fmt(&self, _f: &mut Formatter) -> Result {
-        unimplemented!()
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        match self {
+            InstantiationList::Labels(ref idents) => write!(f, "{}", DisplayVec(idents, ',',)),
+            InstantiationList::Others => write!(f, "others"),
+            InstantiationList::All => write!(f, "all"),
+        }
     }
 }
 
 impl Display for EntityAspect {
-    fn fmt(&self, _f: &mut Formatter) -> Result {
-        unimplemented!()
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        match self {
+            EntityAspect::Entity(ref selected_name, ref ident) => {
+                write!(f, "use entity {}", selected_name)?;
+                if let Some(ref ident) = ident {
+                    write!(f, " ({})", ident)?;
+                }
+                Ok(())
+            }
+            EntityAspect::Configuration(ref selected_name) => {
+                write!(f, "configuration {}", selected_name)
+            }
+            EntityAspect::Open => write!(f, "open"),
+        }
     }
 }
 
 impl Display for BindingIndication {
-    fn fmt(&self, _f: &mut Formatter) -> Result {
-        unimplemented!()
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        if let Some(ref entity_aspect) = &self.entity_aspect {
+            writeln!(f, "{}", entity_aspect)?;
+        }
+        if let Some(ref association_elements) = &self.generic_map {
+            writeln!(f, "generic map ({})", DisplayVec(association_elements, ','))?;
+        }
+        if let Some(ref association_elements) = &self.port_map {
+            writeln!(f, "port map ({})", DisplayVec(association_elements, ','))?;
+        }
+        Ok(())
     }
 }
 
