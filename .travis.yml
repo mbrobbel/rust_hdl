@@ -15,6 +15,7 @@ env:
   matrix:
     - CRATE=vhdl_parser
     - CRATE=vhdl_ls
+    - CRATE=vhdl_format
 
 matrix:
   allow_failures:
