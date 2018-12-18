@@ -9,6 +9,8 @@
 use super::*;
 use std::fmt::{Display, Formatter, Result};
 
+const TAB: &'static str = "  ";
+
 impl<T: Display> Display for WithPos<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "{}", &self.item)
@@ -20,10 +22,10 @@ struct DisplayVec<'a, T: Display, U: Display>(&'a Vec<T>, U);
 impl<'a, T: Display, U: Display> Display for DisplayVec<'a, T, U> {
     fn fmt(&self, f: &mut Formatter) -> Result {
         let separator = &self.1;
-        if let Some(item) = &self.0.first() {
+        if let Some(item) = &self.0.iter().next() {
             write!(f, "{}", item)?;
         }
-        for item in &self.0.iter().next() {
+        for item in self.0.iter().skip(1) {
             write!(f, "{}{}", separator, item)?;
         }
         Ok(())
@@ -74,8 +76,16 @@ impl Display for Binary {
 }
 
 impl Display for AttributeName {
-    fn fmt(&self, _f: &mut Formatter) -> Result {
-        unimplemented!()
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        write!(f, "{} ", &self.name)?;
+        if let Some(ref signature) = &self.signature {
+            write!(f, "{} ", signature)?;
+        }
+        write!(f, "{} ", &self.attr)?;
+        if let Some(ref expr) = &self.expr {
+            write!(f, "({})", expr)?;
+        }
+        Ok(())
     }
 }
 
@@ -279,7 +289,7 @@ impl Display for RangeConstraint {
     fn fmt(&self, f: &mut Formatter) -> Result {
         write!(
             f,
-            "range {} {} {}",
+            "{} {} {}",
             self.left_expr, self.direction, self.right_expr
         )
     }
@@ -536,6 +546,7 @@ impl Display for TypeDeclaration {
     fn fmt(&self, f: &mut Formatter) -> Result {
         match self.def {
             TypeDefinition::Incomplete => write!(f, "type {};", self.ident),
+            TypeDefinition::Subtype(_) => write!(f, "subtype {} is {};", self.ident, self.def),
             _ => write!(f, "type {} is {};", self.ident, self.def),
         }
     }
@@ -554,13 +565,13 @@ impl Display for ObjectDeclaration {
     fn fmt(&self, f: &mut Formatter) -> Result {
         write!(
             f,
-            "{} {} : {}",
+            "{} {}: {}",
             self.class, self.ident, self.subtype_indication
         )?;
         if let Some(expression) = &self.expression {
             write!(f, " := {}", expression)?;
         }
-        Ok(())
+        write!(f, ";")
     }
 }
 
@@ -590,7 +601,7 @@ impl Display for ProcedureSpecification {
     fn fmt(&self, f: &mut Formatter) -> Result {
         write!(f, "procedure {}", self.designator)?;
         if !self.parameter_list.is_empty() {
-            write!(f, "({})", DisplayVec(&self.parameter_list, ','))?;
+            write!(f, "({})", DisplayVec(&self.parameter_list, ';'))?;
         }
         Ok(())
     }
@@ -650,10 +661,10 @@ impl Display for SubprogramDeclaration {
     fn fmt(&self, f: &mut Formatter) -> Result {
         match self {
             SubprogramDeclaration::Procedure(ref procedure_specification) => {
-                write!(f, "{}", procedure_specification)
+                write!(f, "{};", procedure_specification)
             }
             SubprogramDeclaration::Function(ref function_specification) => {
-                write!(f, "{}", function_specification)
+                write!(f, "{};", function_specification)
             }
         }
     }
@@ -1008,8 +1019,10 @@ impl Display for SequentialStatement {
                 write!(f, "{}", signal_assignment)
             }
             SequentialStatement::ProcedureCall(ref function_call) => write!(f, "{}", function_call),
-            SequentialStatement::If(ref if_statement) => write!(f, "{}", if_statement),
-            SequentialStatement::Case(ref case_statement) => write!(f, "{}", case_statement),
+            SequentialStatement::If(ref if_statement) => write!(f, "if-statement"),
+            // SequentialStatement::If(ref if_statement) => write!(f, "{}", if_statement),
+            SequentialStatement::Case(ref case_statement) => write!(f, "case-statment"),
+            // SequentialStatement::Case(ref case_statement) => write!(f, "{}", case_statement),
             SequentialStatement::Loop(ref loop_statement) => write!(f, "{}", loop_statement),
             SequentialStatement::Next(ref next_statement) => write!(f, "{}", next_statement),
             SequentialStatement::Exit(ref exit_statement) => write!(f, "{}", exit_statement),
@@ -1317,104 +1330,202 @@ impl Display for BindingIndication {
 }
 
 impl Display for ComponentSpecification {
-    fn fmt(&self, _f: &mut Formatter) -> Result {
-        unimplemented!()
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        write!(f, "{}: {}", &self.instantiation_list, &self.component_name)
     }
 }
 
 impl Display for VUnitBindingIndication {
-    fn fmt(&self, _f: &mut Formatter) -> Result {
-        unimplemented!()
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        write!(f, "use vunit {}", DisplayVec(&self.vunit_list, ','))
     }
 }
 
 impl Display for ConfigurationSpecification {
-    fn fmt(&self, _f: &mut Formatter) -> Result {
-        unimplemented!()
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        write!(f, "for {} {};", &self.spec, &self.bind_ind)?;
+        for vunit_bind_indication in &self.vunit_bind_inds {
+            writeln!(f, "{};", vunit_bind_indication)?;
+        }
+        writeln!(f, "end for;")
     }
 }
 
 impl Display for ConfigurationDeclarativeItem {
-    fn fmt(&self, _f: &mut Formatter) -> Result {
-        unimplemented!()
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        match self {
+            ConfigurationDeclarativeItem::Use(ref use_clause) => write!(f, "{}", use_clause),
+        }
     }
 }
 
 impl Display for ComponentConfiguration {
-    fn fmt(&self, _f: &mut Formatter) -> Result {
-        unimplemented!()
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        write!(f, "for {} ", &self.spec)?;
+        if let Some(ref bind_ind) = &self.bind_ind {
+            write!(f, "{} ", bind_ind)?;
+        }
+        for vunit_bind_indication in &self.vunit_bind_inds {
+            writeln!(f, "{};", vunit_bind_indication)?;
+        }
+        if let Some(ref block_config) = &self.block_config {
+            writeln!(f, "{}", block_config)?;
+        }
+        writeln!(f, "end for;")
     }
 }
 
 impl Display for ConfigurationItem {
-    fn fmt(&self, _f: &mut Formatter) -> Result {
-        unimplemented!()
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        match self {
+            ConfigurationItem::Block(ref block_configuration) => {
+                write!(f, "{}", block_configuration)
+            }
+            ConfigurationItem::Component(ref component_configuration) => {
+                write!(f, "{}", component_configuration)
+            }
+        }
     }
 }
 
 impl Display for BlockConfiguration {
-    fn fmt(&self, _f: &mut Formatter) -> Result {
-        unimplemented!()
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        writeln!(f, "for {}", &self.block_spec)?;
+        for use_clause in &self.use_clauses {
+            writeln!(f, "{}", use_clause)?;
+        }
+        for configuration_item in &self.items {
+            writeln!(f, "{}", configuration_item)?;
+        }
+        writeln!(f, "end for;")
     }
 }
 
 impl Display for ConfigurationDeclaration {
-    fn fmt(&self, _f: &mut Formatter) -> Result {
-        unimplemented!()
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        writeln!(
+            f,
+            "configuration {} of {} is",
+            &self.ident, &self.entity_name
+        )?;
+        for decl in &self.decl {
+            writeln!(f, "{}", decl)?;
+        }
+        for vunit_bind_indication in &self.vunit_bind_inds {
+            writeln!(f, "{};", vunit_bind_indication)?;
+        }
+        writeln!(f, "{}", &self.block_config)
     }
 }
 
 impl Display for EntityDeclaration {
-    fn fmt(&self, _f: &mut Formatter) -> Result {
-        unimplemented!()
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        writeln!(f, "entity {} is", &self.ident)?;
+        if let Some(ref generic_clause) = &self.generic_clause {
+            writeln!(f, "generic ({})", DisplayVec(generic_clause, ','))?;
+        }
+        if let Some(ref port_clause) = &self.port_clause {
+            writeln!(f, "port ({})", DisplayVec(port_clause, ','))?;
+        }
+        for decl in &self.decl {
+            writeln!(f, "{}", decl)?;
+        }
+        writeln!(f, "begin")?;
+        for statement in &self.statements {
+            writeln!(f, "{}", statement)?;
+        }
+        writeln!(f, "end entity;")
     }
 }
 
 impl Display for ArchitectureBody {
-    fn fmt(&self, _f: &mut Formatter) -> Result {
-        unimplemented!()
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        writeln!(
+            f,
+            "architecture {} of {} is",
+            &self.ident, &self.entity_name
+        )?;
+        writeln!(f, "begin")?;
+        for decl in &self.decl {
+            writeln!(f, "{}", decl)?;
+        }
+        writeln!(f, "end architecture;")
     }
 }
 
 impl Display for PackageDeclaration {
-    fn fmt(&self, _f: &mut Formatter) -> Result {
-        unimplemented!()
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        writeln!(f, "package {} is", &self.ident)?;
+        if let Some(ref generic_clause) = &self.generic_clause {
+            writeln!(f, "generic ({})", DisplayVec(generic_clause, ','))?;
+        }
+        for decl in &self.decl {
+            writeln!(f, "{}{}", TAB, decl)?;
+        }
+        writeln!(f, "end package;")
     }
 }
 
 impl Display for PackageBody {
-    fn fmt(&self, _f: &mut Formatter) -> Result {
-        unimplemented!()
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        writeln!(f, "package body {} is", &self.ident)?;
+        for decl in &self.decl {
+            writeln!(f, "{}{}", TAB, decl)?;
+        }
+        writeln!(f, "end package body;")
     }
 }
 
 impl Display for PrimaryUnit {
-    fn fmt(&self, _f: &mut Formatter) -> Result {
-        unimplemented!()
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        match self {
+            PrimaryUnit::EntityDeclaration(ref design_unit) => write!(f, "{}", design_unit),
+            PrimaryUnit::Configuration(ref design_unit) => write!(f, "{}", design_unit),
+            PrimaryUnit::PackageDeclaration(ref design_unit) => write!(f, "{}", design_unit),
+            PrimaryUnit::PackageInstance(ref design_unit) => write!(f, "{}", design_unit),
+            PrimaryUnit::ContextDeclaration(ref context_declaration) => {
+                write!(f, "{}", context_declaration)
+            }
+        }
     }
 }
 
 impl Display for SecondaryUnit {
-    fn fmt(&self, _f: &mut Formatter) -> Result {
-        unimplemented!()
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        match self {
+            SecondaryUnit::Architecture(ref design_unit) => write!(f, "{}", design_unit),
+            SecondaryUnit::PackageBody(ref design_unit) => write!(f, "{}", design_unit),
+        }
     }
 }
 
-impl<T> Display for DesignUnit<T> {
-    fn fmt(&self, _f: &mut Formatter) -> Result {
-        unimplemented!()
+impl<T: Display> Display for DesignUnit<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        for context_clause in &self.context_clause {
+            writeln!(f, "{}", context_clause)?;
+        }
+        if !&self.context_clause.is_empty() {
+            writeln!(f)?;
+        }
+        write!(f, "{}", &self.unit)
     }
 }
 
 impl Display for AnyDesignUnit {
-    fn fmt(&self, _f: &mut Formatter) -> Result {
-        unimplemented!()
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        match self {
+            AnyDesignUnit::Primary(ref primary_unit) => write!(f, "{}", primary_unit),
+            AnyDesignUnit::Secondary(ref secondary_unit) => write!(f, "{}", secondary_unit),
+        }
     }
 }
 
 impl Display for DesignFile {
-    fn fmt(&self, _f: &mut Formatter) -> Result {
-        unimplemented!()
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        for unit in &self.design_units {
+            writeln!(f, "{}", unit)?;
+        }
+        Ok(())
     }
 }
 
@@ -1422,6 +1533,14 @@ impl Display for DesignFile {
 mod tests {
     use super::*;
     use crate::latin_1::Latin1String;
+
+    #[test]
+    fn display_vec() {
+        let a = vec![1, 2, 3];
+        assert_eq!(format!("{}", DisplayVec(&a, ',')), "1,2,3".to_owned());
+        let b = vec!["a", "b", "c"];
+        assert_eq!(format!("{};", DisplayVec(&b, "; ")), "a; b; c;".to_owned());
+    }
 
     #[test]
     fn formatter_debug_tests() {

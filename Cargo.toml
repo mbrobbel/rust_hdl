@@ -7,5 +7,6 @@
 [workspace]
 members = [
         "vhdl_parser",
-        "vhdl_ls"
+        "vhdl_ls",
+        "vhdl_format"
 ]
