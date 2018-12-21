@@ -1,3 +1,5 @@
+use std::io::Write;
+
 extern crate clap;
 #[macro_use]
 extern crate log;
@@ -5,6 +7,7 @@ extern crate log;
 fn main() {
     use clap::{App, Arg};
     use env_logger;
+    use std::fs::File;
     use vhdl_parser::VHDLParser;
     env_logger::init();
 
@@ -14,11 +17,12 @@ fn main() {
         .about(env!("CARGO_PKG_DESCRIPTION"))
         .arg(
             Arg::with_name("files")
-                .help("The list of files to parse. The files are only parsed without any semantic analysis")
+                .help("The list of files to format.")
                 .index(1)
                 .required(true)
-                .multiple(true)
-        ).get_matches();
+                .multiple(true),
+        )
+        .get_matches();
 
     let parser = VHDLParser::new();
     if let Some(files) = matches.values_of("files") {
@@ -26,7 +30,17 @@ fn main() {
             parser.parse_design_files(files.map(|x| x.to_owned()).collect(), 1)
         {
             let result = design_file.unwrap();
-            info!("{:#?}", result.clone());
+
+            let mut buffer = File::create("output.vhd").expect("file create failed");
+            write!(buffer, "{}", result.clone()).expect("vhd write failed");
+
+            let mut buffer = File::create("output.vhd.ast").expect("file create failed");
+            write!(buffer, "{:#?}", result.clone()).expect("ast write failed");
+
+            for (_, messages, _) in parser.parse_design_files(vec!["output.vhd".to_owned()], 1) {
+                info!("{:?}", messages);
+            }
+
             info!("{}", result.clone());
         }
     }

@@ -9,7 +9,7 @@
 use super::*;
 use std::fmt::{Display, Formatter, Result};
 
-const TAB: &'static str = "  ";
+const TAB: &str = "  ";
 
 impl<T: Display> Display for WithPos<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
@@ -107,7 +107,7 @@ impl Display for ExternalPath {
 
 impl Display for ExternalName {
     fn fmt(&self, f: &mut Formatter) -> Result {
-        write!(f, "{} {} : {}", self.class, self.path, self.subtype)
+        write!(f, "{} {}: {}", self.class, self.path, self.subtype)
     }
 }
 
@@ -349,7 +349,7 @@ impl Display for ResolutionIndication {
 
 impl Display for SubtypeIndication {
     fn fmt(&self, f: &mut Formatter) -> Result {
-        write!(f, "{} {}", self.resolution, self.type_mark)?;
+        write!(f, "{}{}", self.resolution, self.type_mark)?;
         if let Some(ref constraint) = self.constraint {
             write!(f, "{}", constraint)?;
         }
@@ -370,7 +370,7 @@ impl Display for ArrayIndex {
 
 impl Display for ElementDeclaration {
     fn fmt(&self, f: &mut Formatter) -> Result {
-        write!(f, "{} : {};", self.ident, self.subtype)
+        write!(f, "{}: {}", self.ident, self.subtype)
     }
 }
 
@@ -398,11 +398,11 @@ impl Display for AliasDeclaration {
     fn fmt(&self, f: &mut Formatter) -> Result {
         write!(f, "alias {}", self.designator)?;
         if let Some(ref subtype_indication) = self.subtype_indication {
-            write!(f, " : {}", subtype_indication)?;
+            write!(f, ": {}", subtype_indication)?;
         }
         write!(f, " is {}", self.name)?;
         if let Some(ref signature) = self.signature {
-            write!(f, " {} ", signature)?;
+            write!(f, " {}", signature)?;
         }
         write!(f, ";")
     }
@@ -410,7 +410,7 @@ impl Display for AliasDeclaration {
 
 impl Display for AttributeDeclaration {
     fn fmt(&self, f: &mut Formatter) -> Result {
-        write!(f, "attribute {} : {};", self.ident, self.type_mark)
+        write!(f, "attribute {}: {}", self.ident, self.type_mark)
     }
 }
 
@@ -443,7 +443,7 @@ impl Display for AttributeSpecification {
     fn fmt(&self, f: &mut Formatter) -> Result {
         write!(
             f,
-            "attribute {} of {} : {} is {};",
+            "attribute {} of {}: {} is {}",
             self.ident, self.entity_name, self.entity_class, self.expr
         )
     }
@@ -545,9 +545,9 @@ impl Display for TypeDefinition {
 impl Display for TypeDeclaration {
     fn fmt(&self, f: &mut Formatter) -> Result {
         match self.def {
-            TypeDefinition::Incomplete => write!(f, "type {};", self.ident),
-            TypeDefinition::Subtype(_) => write!(f, "subtype {} is {};", self.ident, self.def),
-            _ => write!(f, "type {} is {};", self.ident, self.def),
+            TypeDefinition::Incomplete => write!(f, "type {}", self.ident),
+            TypeDefinition::Subtype(_) => write!(f, "subtype {} is {}", self.ident, self.def),
+            _ => write!(f, "type {} is {}", self.ident, self.def),
         }
     }
 }
@@ -571,13 +571,14 @@ impl Display for ObjectDeclaration {
         if let Some(expression) = &self.expression {
             write!(f, " := {}", expression)?;
         }
-        write!(f, ";")
+        Ok(())
+        // write!(f, ";")
     }
 }
 
 impl Display for FileDeclaration {
     fn fmt(&self, f: &mut Formatter) -> Result {
-        write!(f, "file {} : {}", self.ident, self.subtype_indication)?;
+        write!(f, "file {}: {}", self.ident, self.subtype_indication)?;
         if let Some(ref expression) = self.open_info {
             write!(f, " open {}", expression)?;
         }
@@ -601,7 +602,7 @@ impl Display for ProcedureSpecification {
     fn fmt(&self, f: &mut Formatter) -> Result {
         write!(f, "procedure {}", self.designator)?;
         if !self.parameter_list.is_empty() {
-            write!(f, "({})", DisplayVec(&self.parameter_list, ';'))?;
+            write!(f, "({})", DisplayVec(&self.parameter_list, "; "))?;
         }
         Ok(())
     }
@@ -609,14 +610,14 @@ impl Display for ProcedureSpecification {
 
 impl Display for FunctionSpecification {
     fn fmt(&self, f: &mut Formatter) -> Result {
-        if self.pure == false {
+        if !self.pure {
             write!(f, "impure ")?;
         }
         write!(
             f,
-            "function {} ({}) return {}",
+            "function {}({}) return {}",
             &self.designator,
-            DisplayVec(&self.parameter_list, ';'),
+            DisplayVec(&self.parameter_list, "; "),
             &self.return_type
         )
     }
@@ -626,13 +627,13 @@ impl Display for SubprogramBody {
     fn fmt(&self, f: &mut Formatter) -> Result {
         writeln!(f, "{} is", self.specification)?;
         for declaration in &self.declarations {
-            writeln!(f, "{}", declaration)?;
+            writeln!(f, "{}{}", TAB, declaration)?;
         }
         writeln!(f, "begin")?;
         for statement in &self.statements {
-            writeln!(f, "{}", statement)?;
+            writeln!(f, "{}{}", TAB, statement)?;
         }
-        writeln!(f, "end")
+        writeln!(f, "end;")
     }
 }
 
@@ -661,10 +662,10 @@ impl Display for SubprogramDeclaration {
     fn fmt(&self, f: &mut Formatter) -> Result {
         match self {
             SubprogramDeclaration::Procedure(ref procedure_specification) => {
-                write!(f, "{};", procedure_specification)
+                write!(f, "{}", procedure_specification)
             }
             SubprogramDeclaration::Function(ref function_specification) => {
-                write!(f, "{};", function_specification)
+                write!(f, "{}", function_specification)
             }
         }
     }
@@ -672,7 +673,7 @@ impl Display for SubprogramDeclaration {
 
 impl Display for InterfaceFileDeclaration {
     fn fmt(&self, f: &mut Formatter) -> Result {
-        write!(f, "file {} : {}", self.ident, self.subtype_indication)
+        write!(f, "file {}: {}", self.ident, self.subtype_indication)
     }
 }
 
@@ -758,7 +759,7 @@ impl Display for Mode {
 
 impl Display for PortClause {
     fn fmt(&self, f: &mut Formatter) -> Result {
-        write!(f, "port ({});", DisplayVec(&self.port_list, ';'))
+        write!(f, "port ({});", DisplayVec(&self.port_list, "; "))
     }
 }
 
@@ -1460,7 +1461,7 @@ impl Display for PackageDeclaration {
             writeln!(f, "generic ({})", DisplayVec(generic_clause, ','))?;
         }
         for decl in &self.decl {
-            writeln!(f, "{}{}", TAB, decl)?;
+            writeln!(f, "{}{};", TAB, decl)?;
         }
         writeln!(f, "end package;")
     }
