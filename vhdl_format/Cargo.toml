@@ -9,6 +9,7 @@ edition = "2018"
 
 [dependencies]
 vhdl_parser = { version = "^0", path = "../vhdl_parser"}
+
 clap = "2.32.0"
 log = "0.4.6"
 env_logger = "0.6.0"

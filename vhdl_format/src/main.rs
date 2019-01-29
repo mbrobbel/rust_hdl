@@ -1,15 +1,11 @@
-use std::io::Write;
-
-extern crate clap;
-#[macro_use]
-extern crate log;
-
 fn main() {
     use clap::{App, Arg};
-    use env_logger;
+    use env_logger::{Builder, Env};
+    use log::info;
     use std::fs::File;
+    use std::io::Write;
     use vhdl_parser::VHDLParser;
-    env_logger::init();
+    Builder::from_env(Env::default().default_filter_or("debug")).init();
 
     let matches = App::new(env!("CARGO_PKG_NAME"))
         .version(env!("CARGO_PKG_VERSION"))

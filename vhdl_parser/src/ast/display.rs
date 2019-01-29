@@ -17,6 +17,12 @@ impl<T: Display> Display for WithPos<T> {
     }
 }
 
+// macro_rules! format_iter {
+//     ($iter:ident) => {
+//         format!("{}", iter)
+//     };
+// }
+
 /// List Vec is a simple wrapper struct to print Vecs
 struct DisplayVec<'a, T: Display, U: Display>(&'a Vec<T>, U);
 impl<'a, T: Display, U: Display> Display for DisplayVec<'a, T, U> {
@@ -32,12 +38,39 @@ impl<'a, T: Display, U: Display> Display for DisplayVec<'a, T, U> {
     }
 }
 
+/// ```
+/// use vhdl_parser::ast::BaseSpecifier;
+/// assert_eq!("B", format!("{}", BaseSpecifier::B));
+/// assert_eq!("O", format!("{}", BaseSpecifier::O));
+/// assert_eq!("X", format!("{}", BaseSpecifier::X));
+/// assert_eq!("UB", format!("{}", BaseSpecifier::UB));
+/// assert_eq!("UO", format!("{}", BaseSpecifier::UO));
+/// assert_eq!("UX", format!("{}", BaseSpecifier::UX));
+/// assert_eq!("SB", format!("{}", BaseSpecifier::SB));
+/// assert_eq!("SO", format!("{}", BaseSpecifier::SO));
+/// assert_eq!("SX", format!("{}", BaseSpecifier::SX));
+/// assert_eq!("D", format!("{}", BaseSpecifier::D));
+/// ```
 impl Display for BaseSpecifier {
     fn fmt(&self, f: &mut Formatter) -> Result {
         write!(f, "{:?}", self)
     }
 }
 
+/// ```
+/// use vhdl_parser::ast::Unary;
+/// assert_eq!("and", format!("{}", Unary::And));
+/// assert_eq!("or", format!("{}", Unary::Or));
+/// assert_eq!("nand", format!("{}", Unary::Nand));
+/// assert_eq!("nor", format!("{}", Unary::Nor));
+/// assert_eq!("xor", format!("{}", Unary::Xor));
+/// assert_eq!("xnor", format!("{}", Unary::Xnor));
+/// assert_eq!("abs", format!("{}", Unary::Abs));
+/// assert_eq!("not", format!("{}", Unary::Not));
+/// assert_eq!("-", format!("{}", Unary::Minus));
+/// assert_eq!("+", format!("{}", Unary::Plus));
+/// assert_eq!("??", format!("{}", Unary::QueQue));
+/// ```
 impl Display for Unary {
     fn fmt(&self, f: &mut Formatter) -> Result {
         match self {
